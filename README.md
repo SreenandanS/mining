@@ -38,6 +38,11 @@ source venv/bin/activate
 ```bash
 pip install -r requirements.txt
 ```
+### 4. Run the app
+
+```bash
+python -m streamlit run app.py
+```
 
 ## Key Features
 

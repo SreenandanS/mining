@@ -1,3 +1,6 @@
+pathway
+pathway[xpack-llm]
+pathway[xpack-llm-docs]
 streamlit
 altair
 pydeck

@@ -1,599 +1,493 @@
 """
-Mining Safety Analysis Platform - Main Streamlit Application
-Interactive dashboard for mining accident analysis with AI agents
+SARSA - AI for Mine Safety Intelligence
+Main Streamlit Application
 """
 
 import streamlit as st
-import plotly.express as px
-import plotly.graph_objects as go
 import pandas as pd
+import altair as alt
+import pydeck as pdk
+import time
+import re
 from datetime import datetime
-import os
-from pathway_pipeline import initialize_rag_system
-from langgraph_agents import create_safety_agent
 
-# Page configuration
-st.set_page_config(
-    page_title="Mining Safety AI Platform",
-    page_icon="⛏️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Import our custom modules
+from data_processor import PDFAccidentParser, PathwayStreamSimulator, RegulatoryKnowledgeBase
+from agents import SARSAAgentOrchestrator
 
-# Custom CSS
+# Set page config
+st.set_page_config(layout="wide", page_title="SARSA - Mine Safety Intelligence Platform")
+
+# Custom CSS for better styling
 st.markdown("""
 <style>
     .main-header {
         font-size: 2.5rem;
         font-weight: bold;
         color: #1f77b4;
-        text-align: center;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
     }
     .sub-header {
         font-size: 1.2rem;
         color: #666;
-        text-align: center;
         margin-bottom: 2rem;
     }
     .metric-card {
         background-color: #f0f2f6;
         padding: 1rem;
         border-radius: 0.5rem;
-        text-align: center;
+        border-left: 4px solid #1f77b4;
     }
     .alert-box {
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
-    }
-    .alert-critical {
-        background-color: #ffebee;
-        border-left: 4px solid #f44336;
+        padding: 0.75rem;
+        border-radius: 0.25rem;
+        margin-bottom: 0.5rem;
     }
     .alert-warning {
-        background-color: #fff3e0;
-        border-left: 4px solid #ff9800;
+        background-color: #fff3cd;
+        border-left: 4px solid #ffc107;
+    }
+    .alert-info {
+        background-color: #d1ecf1;
+        border-left: 4px solid #17a2b8;
     }
 </style>
 """, unsafe_allow_html=True)
 
+# Initialize session state
+if 'file_processed' not in st.session_state:
+    st.session_state['file_processed'] = False
+if 'df' not in st.session_state:
+    st.session_state['df'] = None
+if 'orchestrator' not in st.session_state:
+    st.session_state['orchestrator'] = None
+if 'pathway_stream' not in st.session_state:
+    st.session_state['pathway_stream'] = None
+if 'regulatory_kb' not in st.session_state:
+    st.session_state['regulatory_kb'] = RegulatoryKnowledgeBase()
 
-@st.cache_resource
-def initialize_system():
-    """Initialize RAG and Agent systems"""
-    with st.spinner("🔄 Initializing AI systems..."):
-        rag = initialize_rag_system()
-        agent = create_safety_agent(rag)
-    return rag, agent
+# --- Page Title ---
+st.markdown('<div class="main-header">⛏️ SARSA - AI for Mine Safety Intelligence</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Leveraging Agentic AI and Real-Time RAG for Safer Mining Operations</div>', unsafe_allow_html=True)
 
-
-def render_sidebar():
-    """Render sidebar with system info"""
-    st.sidebar.title("⛏️ Mining Safety AI")
-    st.sidebar.markdown("---")
+# --- Sidebar ---
+with st.sidebar:
+    st.header("🤖 SARSA Agent Control")
     
-    # API Key input
-    api_key = st.sidebar.text_input(
-        "OpenAI API Key",
-        type="password",
-        help="Enter your OpenAI API key"
+    # 1. File Uploader
+    st.subheader("📄 Data Ingestion")
+    uploaded_file = st.file_uploader(
+        "Upload DGMS Report (PDF)", 
+        type=["pdf"],
+        help="Upload DGMS accident report PDF for analysis"
     )
     
-    if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
-        st.sidebar.success("✅ API Key configured")
+    if uploaded_file and not st.session_state['file_processed']:
+        if st.button("🚀 Process PDF & Initialize Agents"):
+            with st.spinner("Processing PDF... Extracting entities... Building knowledge graph... Initializing agents..."):
+                try:
+                    # Parse PDF
+                    parser = PDFAccidentParser()
+                    df = parser.parse_pdf(uploaded_file)
+                    
+                    if len(df) == 0:
+                        st.error("⚠️ No accident data found in PDF. Please check the file format.")
+                    else:
+                        # Initialize Pathway stream simulator
+                        pathway_stream = PathwayStreamSimulator()
+                        pathway_stream.ingest_data(df)
+                        
+                        # Initialize agents
+                        orchestrator = SARSAAgentOrchestrator(
+                            data=df,
+                            pathway_stream=pathway_stream,
+                            regulatory_kb=st.session_state['regulatory_kb']
+                        )
+                        
+                        # Store in session state
+                        st.session_state['df'] = df
+                        st.session_state['pathway_stream'] = pathway_stream
+                        st.session_state['orchestrator'] = orchestrator
+                        st.session_state['file_processed'] = True
+                        st.session_state['total_accidents'] = len(df)
+                        st.session_state['total_deaths'] = df['deaths'].sum() if 'deaths' in df.columns else len(df)
+                        
+                        st.success(f"✅ Processed {len(df)} accident records!")
+                        time.sleep(1)
+                        st.rerun()
+                        
+                except Exception as e:
+                    st.error(f"❌ Error processing PDF: {str(e)}")
+    
+    # 2. System Status
+    st.subheader("📊 System Status")
+    with st.expander("View Live System Status", expanded=True):
+        if st.session_state['file_processed']:
+            status_color = "green"
+            status_text = "✅ Online"
+        else:
+            status_color = "orange"
+            status_text = "⏳ Awaiting Data"
+        
+        st.markdown(f"**Pathway Ingestion:** <span style='color:{status_color};'>{status_text}</span>", unsafe_allow_html=True)
+        st.markdown(f"**LangGraph Agents:** <span style='color:{status_color};'>{status_text}</span>", unsafe_allow_html=True)
+        st.markdown(f"**Vector DB (FAISS):** <span style='color:{status_color};'>{status_text}</span>", unsafe_allow_html=True)
+        st.markdown(f"**Knowledge Graph:** <span style='color:{status_color};'>{status_text}</span>", unsafe_allow_html=True)
+        
+        if st.session_state['file_processed']:
+            st.markdown(f"**Records Indexed:** <span style='color:green;'>{st.session_state['total_accidents']}</span>", unsafe_allow_html=True)
+    
+    # 3. Live Alert Feed
+    st.subheader("🔔 Live Alert Feed")
+    with st.expander("View Real-Time Alerts", expanded=False):
+        if st.session_state['file_processed'] and st.session_state['pathway_stream']:
+            alerts = st.session_state['pathway_stream'].generate_live_alerts()
+            
+            if len(alerts) > 0:
+                for alert in alerts[:5]:  # Show top 5
+                    if alert['type'] == 'warning':
+                        st.warning(f"**ALERT ({alert['time']}):** {alert['message']}")
+                    else:
+                        st.info(f"**INFO ({alert['time']}):** {alert['message']}")
+            else:
+                st.info("No recent alerts")
+        else:
+            st.info("Upload PDF to activate live monitoring")
+    
+    # 4. Navigation
+    st.divider()
+    if st.session_state['file_processed']:
+        st.session_state.page = st.radio(
+            "🧭 Navigation",
+            ("📊 Executive Dashboard", "💬 Interactive Query", "📝 Generate Safety Audit"),
+            key="navigation"
+        )
     else:
-        st.sidebar.warning("⚠️ Please enter API Key")
-    
-    st.sidebar.markdown("---")
-    
-    # System statistics
-    if 'rag' in st.session_state and st.session_state.rag:
-        stats = st.session_state.rag.get_statistics()
-        st.sidebar.metric("📄 Documents Loaded", stats["total_documents"])
-        st.sidebar.metric("📊 Data Chunks", stats["total_chunks"])
-        st.sidebar.metric("💀 Total Casualties", stats.get("total_casualties", 0))
-        if stats["years"]:
-            st.sidebar.metric("📅 Year Range", f"{min(stats['years'])} - {max(stats['years'])}")
-        
-        # Show mode (Pathway or Fallback)
-        mode = stats.get("mode", "unknown")
-        if mode == "pathway_streaming":
-            st.sidebar.success("🚀 Pathway Streaming Active")
-        elif mode == "fallback":
-            st.sidebar.info("📦 Fallback Mode (No Streaming)")
-        
-        if stats.get("streaming_active"):
-            st.sidebar.success("👁️ Real-time Monitoring ON")
-        else:
-            st.sidebar.info("📡 Static Mode")
-    
-    st.sidebar.markdown("---")
-    st.sidebar.info("""
-    **System Architecture:**
-    - 🚀 Pathway Streaming RAG
-    - 📄 Docling PDF Parser
-    - 👁️ Real-time Monitoring
-    
-    **Multi-Agent System:**
-    - 🔍 Inspector Agent
-    - ⚖️ Compliance Officer
-    - 📊 Safety Analyst
-    - 🎓 Training Coordinator
-    
-    **Features:**
-    - 🧠 Pattern Detection
-    - 🚨 Automated Alerts
-    - 📈 Live Visualizations
-    """)
+        st.session_state.page = None
+        st.info("👆 Upload a DGMS report to activate analysis tools")
 
-
-def render_home_tab():
-    """Render home/overview tab"""
-    st.markdown('<div class="main-header">🛡️ Mining Safety Analysis Platform</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Pathway-Powered Real-time Analysis of DGMS India Mining Accident Records (2016-2022)</div>', unsafe_allow_html=True)
+# --- Main Content Area ---
+if not st.session_state['file_processed']:
+    # Landing Page
+    st.info("### 🚀 Welcome to SARSA - Mine Safety Intelligence Platform")
     
-    # Key metrics
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("🚀 Streaming", "Pathway", help="Real-time document processing")
-    
-    with col2:
-        st.metric("🤖 Agents", "4 Specialized", help="Multi-agent collaboration")
-    
-    with col3:
-        st.metric("📄 Parser", "Docling", help="Vision-based PDF parsing")
-    
-    with col4:
-        if 'rag' in st.session_state:
-            stats = st.session_state.rag.get_statistics()
-            st.metric("📊 Documents", stats["total_documents"])
-    
-    st.markdown("---")
-    
-    # Architecture diagram
-    st.subheader("🏗️ System Architecture")
-    st.code("""
-┌─────────────────────────────────────────────────────────────┐
-│                    PATHWAY STREAMING LAYER                  │
-│  📁 File Monitor → 📄 Docling Parser → 🔪 Chunker →       │
-│  🧮 Embeddings → 💾 Vector Index → 🔍 Similarity Search    │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                   LANGGRAPH AGENT LAYER                     │
-│                                                             │
-│  Query → RAG Retrieval → ┌──────────────────────┐         │
-│                          │  🔍 Inspector        │         │
-│                          │  📊 Safety Analyst   │         │
-│                          │  ⚖️ Compliance       │         │
-│                          │  🎓 Training Coord   │         │
-│                          └──────────────────────┘         │
-│                                 ↓                          │
-│                    Synthesis & Recommendations            │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    STREAMLIT UI LAYER                       │
-│  📊 Dashboard | 🔍 Query | 🤖 Agents | 📈 Analytics       │
-└─────────────────────────────────────────────────────────────┘
-    """, language="")
-    
-    st.markdown("---")
-    
-    # Features
-    st.subheader("🚀 Platform Features")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("""
-        **🔍 Intelligent Analysis**
-        - Natural language query interface
-        - Semantic search across accident records
-        - Pattern detection and trend analysis
-        - Root cause identification
-        """)
-        
-        st.markdown("""
-        **🤖 Autonomous Agents**
-        - Digital Mine Safety Officer
-        - Automated incident classification
-        - Real-time hazard monitoring
-        - Compliance checking
-        """)
-    
-    with col2:
-        st.markdown("""
-        **📊 Real-time Insights**
-        - Live accident trend visualization
-        - Geographic hotspot mapping
-        - Timeline analysis
-        - Statistical dashboards
-        """)
-        
-        st.markdown("""
-        **📋 Automated Reporting**
-        - Safety audit report generation
-        - Actionable recommendations
-        - Regulatory compliance reports
-        - Preventive measure suggestions
-        """)
-    
-    # Quick start guide
-    st.markdown("---")
-    st.subheader("🎯 Quick Start Guide")
-    
-    st.info("""
-    1. **Enter your OpenAI API key** in the sidebar
-    2. **Place DGMS PDF files** in the `data/dgms/` directory
-    3. **Restart the app** to load documents
-    4. **Navigate to Query tab** to start analyzing
-    5. **Use the Agent tab** for autonomous safety analysis
-    """)
-
-
-def render_query_tab():
-    """Render query interface tab"""
-    st.header("🔍 Document Query & Search")
-    
-    if 'rag' not in st.session_state or not st.session_state.rag.documents:
-        st.warning("⚠️ No documents loaded. Please place PDF files in `data/dgms/` and restart the app.")
-        return
-    
-    # Query input
-    query = st.text_input(
-        "Enter your query:",
-        placeholder="e.g., Show me all methane-related accidents in 2021 in underground coal mines",
-        help="Ask questions about mining accidents, safety patterns, or specific incidents"
-    )
-    
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        k = st.slider("Results", 1, 10, 4, help="Number of relevant documents to retrieve")
-    
-    if st.button("🔍 Search", type="primary") and query:
-        with st.spinner("Searching documents..."):
-            results = st.session_state.rag.query(query, k=k)
-        
-        if results.get("error"):
-            st.error(f"Error: {results['error']}")
-        elif results["count"] == 0:
-            st.warning("No relevant documents found")
-        else:
-            st.success(f"Found {results['count']} relevant documents")
-            
-            # Display results
-            for idx, result in enumerate(results["results"], 1):
-                with st.expander(f"📄 Result {idx} - {result['source']} ({result['year']})"):
-                    st.markdown(result["content"])
-
-
-def render_agent_tab():
-    """Render multi-agent analysis tab"""
-    st.header("🤖 Multi-Agent Safety Analysis System")
-    st.markdown("*Collaborative AI agents: Inspector | Compliance Officer | Safety Analyst | Training Coordinator*")
-    
-    if 'agent' not in st.session_state:
-        st.error("Agent system not initialized. Please configure API key and restart.")
-        return
-    
-    if 'rag' not in st.session_state or not st.session_state.rag.documents:
-        st.warning("⚠️ No documents loaded. Please place PDF files in `data/dgms/` and restart the app.")
-        return
-    
-    # Example queries
-    st.markdown("**💡 Example Queries:**")
-    example_queries = [
-        "Show me all methane-related accidents in 2021",
-        "Analyze transportation machinery accidents in Jharkhand",
-        "What are the main causes of fatal accidents?",
-        "Identify safety compliance gaps in recent reports",
-        "Show roof fall incidents and recommend preventive measures"
-    ]
-    
-    cols = st.columns(3)
-    for idx, example in enumerate(example_queries[:3]):
-        with cols[idx]:
-            if st.button(example, key=f"example_{idx}"):
-                st.session_state.agent_query = example
-    
-    st.markdown("---")
-    
-    # Query input
-    query = st.text_area(
-        "Enter your safety analysis query:",
-        value=st.session_state.get("agent_query", ""),
-        placeholder="Ask the Multi-Agent System anything about mining accidents, safety patterns, or compliance...",
-        height=100
-    )
-    
-    if st.button("🚀 Analyze with Multi-Agent System", type="primary") and query:
-        with st.spinner("🤖 Multi-agent system analyzing... This may take 60-90 seconds..."):
-            result = st.session_state.agent.process_query(query)
-        
-        if result.get("error"):
-            st.error(f"Error: {result['error']}")
-        else:
-            # Display results in structured format
-            st.success(f"✅ Analysis Complete - {len(result.get('agents_consulted', []))} agents consulted")
-            
-            # Show which agents were involved
-            if result.get("agents_consulted"):
-                st.info(f"🤝 Agents Consulted: {', '.join(result['agents_consulted'])}")
-            
-            # Alerts section (highest priority)
-            if result["alerts"]:
-                st.markdown("### 🚨 Priority Alerts")
-                for alert in result["alerts"]:
-                    if "CRITICAL" in alert or "🚨" in alert:
-                        st.markdown(f'<div class="alert-box alert-critical">{alert}</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown(f'<div class="alert-box alert-warning">{alert}</div>', unsafe_allow_html=True)
-            
-            # Create tabs for different agent outputs
-            agent_tabs = st.tabs(["🔍 Inspector", "⚖️ Compliance", "📊 Risk Analysis", "🎓 Training", "💡 Recommendations"])
-            
-            with agent_tabs[0]:
-                st.markdown("#### Inspector Agent - Incident Classification")
-                if result["classification"]:
-                    st.json(result["classification"])
-            
-            with agent_tabs[1]:
-                st.markdown("#### Compliance Officer - Regulatory Check")
-                if result["compliance"]:
-                    st.json(result["compliance"])
-                    
-                    violations = result["compliance"].get("violations_detected", [])
-                    if violations:
-                        st.error(f"⚠️ {len(violations)} regulatory violations detected")
-                        for v in violations[:5]:
-                            st.markdown(f"- {v}")
-            
-            with agent_tabs[2]:
-                st.markdown("#### Safety Analyst - Pattern & Risk Analysis")
-                if result["risk_analysis"]:
-                    risk_level = result["risk_analysis"].get("risk_level", "unknown")
-                    
-                    if risk_level == "critical":
-                        st.error(f"🔴 Risk Level: **{risk_level.upper()}**")
-                    elif risk_level == "high":
-                        st.warning(f"🟠 Risk Level: **{risk_level.upper()}**")
-                    else:
-                        st.info(f"🟢 Risk Level: **{risk_level.upper()}**")
-                    
-                    st.json(result["risk_analysis"])
-            
-            with agent_tabs[3]:
-                st.markdown("#### Training Coordinator - Learning & Development")
-                if result["training"]:
-                    st.json(result["training"])
-                    
-                    immediate = result["training"].get("immediate_training", [])
-                    if immediate:
-                        st.warning(f"⏰ {len(immediate)} immediate training needs identified")
-            
-            with agent_tabs[4]:
-                st.markdown("#### Synthesized Recommendations")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("**⚡ Immediate Actions**")
-                    if result["immediate_actions"]:
-                        for action in result["immediate_actions"]:
-                            st.markdown(f"- {action}")
-                    else:
-                        st.info("No immediate actions required")
-                
-                with col2:
-                    st.markdown("**📅 Long-term Recommendations**")
-                    if result["long_term_recommendations"]:
-                        for rec in result["long_term_recommendations"]:
-                            st.markdown(f"- {rec}")
-                    else:
-                        st.info("No long-term recommendations")
-            
-            # Source info
-            st.markdown("---")
-            st.info(f"📚 Analysis based on {result['source_documents']} source documents")
-
-
-def render_dashboard_tab():
-    """Render visualization dashboard with real extracted data"""
-    st.header("📊 Safety Analytics Dashboard")
-    
-    if 'rag' not in st.session_state or not st.session_state.rag.documents:
-        st.warning("⚠️ No documents loaded. Please place PDF files in `data/dgms/` and restart the app.")
-        return
-    
-    stats = st.session_state.rag.get_statistics()
-    
-    # Key metrics row
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("📄 Total Reports", stats["total_documents"])
-    with col2:
-        st.metric("💀 Total Casualties", stats.get("total_casualties", 0))
-    with col3:
-        fatal_count = stats["severity_distribution"].get("fatal", 0)
-        st.metric("⚠️ Fatal Incidents", fatal_count)
-    with col4:
-        if stats["years"]:
-            year_span = int(max(stats["years"])) - int(min(stats["years"])) + 1
-            st.metric("📅 Years Covered", year_span)
-    
-    st.markdown("---")
-    
-    # Filter section
-    st.subheader("🔍 Filter Data")
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        year_options = ["All"] + stats["years"]
-        selected_year = st.selectbox("Year", year_options)
+        st.markdown("#### 🤖 Analysis Agent")
+        st.write("Generates live KPIs, heatmaps, and trend analysis")
+        st.write("✓ Real-time data processing")
+        st.write("✓ Geographic risk mapping")
+        st.write("✓ Temporal trend analysis")
     
     with col2:
-        state_options = ["All"] + list(stats["states"].keys())
-        selected_state = st.selectbox("State", state_options)
+        st.markdown("#### 💬 Query Agent")
+        st.write("Natural language interface for safety inquiries")
+        st.write("✓ Semantic search using RAG")
+        st.write("✓ Entity recognition")
+        st.write("✓ Complex query interpretation")
     
     with col3:
-        severity_options = ["All", "fatal", "serious", "minor"]
-        selected_severity = st.selectbox("Severity", severity_options)
+        st.markdown("#### 📝 Audit Agent")
+        st.write("Automated safety compliance reports")
+        st.write("✓ DGMS regulation cross-reference")
+        st.write("✓ Root cause analysis")
+        st.write("✓ Actionable recommendations")
     
-    # Apply filters
-    filter_year = None if selected_year == "All" else selected_year
-    filter_state = None if selected_state == "All" else selected_state
-    filter_severity = None if selected_severity == "All" else selected_severity
+    st.divider()
+    st.markdown("### 📋 How It Works")
+    st.write("""
+    1. **Upload** your DGMS accident report (PDF format)
+    2. **AI Pipeline** extracts and structures accident data using PyMuPDF + NLP
+    3. **Pathway** creates real-time data streams and builds knowledge graph
+    4. **LangGraph Agents** provide intelligent analysis, queries, and audits
+    5. **Explore** insights through interactive dashboard and natural language queries
+    """)
     
-    filtered_data = st.session_state.rag.get_filtered_data(
-        year=filter_year,
-        state=filter_state,
-        severity=filter_severity
-    )
+    st.info("👈 Get started by uploading a DGMS PDF report in the sidebar")
+
+else:
+    df = st.session_state['df']
+    orchestrator = st.session_state['orchestrator']
     
-    st.info(f"Showing {len(filtered_data)} incidents matching filters")
-    
-    st.markdown("---")
-    
-    # Visualizations
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Yearly trend
-        if stats["years"] and len(stats["years"]) > 1:
-            year_counts = {}
-            for doc_meta in filtered_data:
-                year = doc_meta.get("year", "unknown")
-                if year != "unknown":
-                    year_counts[year] = year_counts.get(year, 0) + 1
+    # --- Page 1: Executive Dashboard ---
+    if st.session_state.page == "📊 Executive Dashboard":
+        st.subheader("📊 Executive Dashboard")
+        
+        # Run Analysis Agent
+        with st.spinner("🤖 Analysis Agent processing..."):
+            analysis = orchestrator.run_analysis()
+        
+        kpis = analysis['kpis']
+        
+        # KPI Cards
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Fatal Accidents", kpis['total_accidents'])
+        col2.metric("Total Deaths", kpis['total_deaths'])
+        col3.metric("Primary Hazard", kpis['primary_hazard'])
+        col4.metric("Highest-Risk State", kpis['highest_risk_state'])
+        
+        st.divider()
+        
+        # Charts
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            st.markdown("#### 📈 Accidents by Cause Category")
+            if 'cause_category' in df.columns:
+                cause_chart = alt.Chart(df).mark_bar().encode(
+                    x=alt.X('count()', title='Number of Accidents'),
+                    y=alt.Y('cause_category:N', title='Cause Category', sort='-x'),
+                    color=alt.Color('cause_category:N', legend=None),
+                    tooltip=['cause_category', 'count()']
+                ).properties(height=300).interactive()
+                st.altair_chart(cause_chart, use_container_width=True)
+            else:
+                st.info("No cause category data available")
+        
+        with col2:
+            st.markdown("#### 🗺️ Accidents by State")
+            if 'state' in df.columns:
+                state_chart = alt.Chart(df).mark_bar(color='#FF8C00').encode(
+                    x=alt.X('count()', title='Number of Accidents'),
+                    y=alt.Y('state:N', title='State', sort='-x'),
+                    tooltip=['state', 'count()']
+                ).properties(height=300).interactive()
+                st.altair_chart(state_chart, use_container_width=True)
+            else:
+                st.info("No state data available")
+        
+        st.divider()
+        
+        # Geographic Map
+        st.markdown("#### 🗺️ Accident Location Heatmap")
+        if len(analysis['heatmaps']) > 0:
+            map_data = pd.DataFrame(analysis['heatmaps'])
             
-            if year_counts:
-                df_years = pd.DataFrame(list(year_counts.items()), columns=["Year", "Incidents"])
-                df_years = df_years.sort_values("Year")
+            view_state = pdk.ViewState(
+                latitude=map_data['lat'].mean(),
+                longitude=map_data['lon'].mean(),
+                zoom=4,
+                pitch=40,
+            )
+            
+            layer = pdk.Layer(
+                'ScatterplotLayer',
+                data=map_data,
+                get_position='[lon, lat]',
+                get_color='[200, 30, 0, 160]',
+                get_radius='deaths * 15000',
+                pickable=True
+            )
+            
+            tooltip = {
+                "html": "<b>{state}</b><br/>Accidents: {accidents}<br/>Deaths: {deaths}",
+                "style": {"backgroundColor": "steelblue", "color": "white"}
+            }
+            
+            st.pydeck_chart(pdk.Deck(
+                map_style=None,
+                initial_view_state=view_state,
+                layers=[layer],
+                tooltip=tooltip
+            ))
+        else:
+            st.info("Geographic data not available for mapping")
+        
+        # Timeline
+        if 'date' in df.columns:
+            st.markdown("#### 📅 Accident Timeline")
+            timeline_chart = alt.Chart(df).mark_circle(size=60).encode(
+                x=alt.X('date:T', title='Date'),
+                y=alt.Y('cause_category:N', title='Cause Category'),
+                color=alt.Color('state:N', title='State'),
+                tooltip=['date', 'mine_name', 'cause_category', 'state']
+            ).properties(height=300).interactive()
+            st.altair_chart(timeline_chart, use_container_width=True)
+    
+    # --- Page 2: Interactive Query ---
+    elif st.session_state.page == "💬 Interactive Query":
+        st.subheader("💬 Agentic Query Interface")
+        st.write("Ask the Query Agent about safety incidents. Try queries like:")
+        st.code("• 'Give me a summary'\n• 'Tell me about accidents in Jharkhand'\n• 'Show dumper-related incidents'\n• 'What happened at Chikla Mine'")
+        
+        query = st.text_input("🔍 Enter your query:", key="query_input", placeholder="e.g., summarize accidents in 2020")
+        
+        if query:
+            with st.spinner("🤖 Query Agent processing..."):
+                result = orchestrator.run_query(query)
+            
+            st.markdown(f"### 🤖 Agent Response")
+            
+            if result['type'] == 'summary':
+                st.info(result['message'])
                 
-                fig = px.line(df_years, x="Year", y="Incidents",
-                             title="📈 Incident Trend Over Time",
-                             markers=True)
-                fig.update_traces(line_color='#1f77b4', line_width=3)
-                st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Severity distribution
-        severity_data = stats["severity_distribution"]
-        if severity_data:
-            df_severity = pd.DataFrame(list(severity_data.items()), 
-                                       columns=["Severity", "Count"])
+                if result['data']:
+                    data = result['data']
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**📊 Total Statistics**")
+                        st.write(f"- Fatal Accidents: `{data['total_accidents']}`")
+                        st.write(f"- Total Deaths: `{data['total_deaths']}`")
+                    
+                    with col2:
+                        st.markdown("**🔴 Top Hazards**")
+                        for cause in data.get('top_causes', [])[:3]:
+                            st.write(f"- {cause['cause']}: `{cause['count']}` incidents")
+                    
+                    if data.get('top_states'):
+                        st.markdown("**🗺️ High-Risk States**")
+                        for state_info in data['top_states'][:3]:
+                            st.write(f"- {state_info['state']}: `{state_info['count']}` incidents")
             
-            colors = {'fatal': '#d62728', 'serious': '#ff7f0e', 'minor': '#2ca02c'}
-            df_severity['Color'] = df_severity['Severity'].map(colors)
+            elif result['type'] == 'entity':
+                st.info(result['message'])
+                
+                if result['data']:
+                    for incident in result['data']:
+                        with st.expander(f"📍 {incident['mine_name']} - {incident['date']}"):
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write(f"**Location:** {incident['location']}")
+                                st.write(f"**Owner:** {incident['owner']}")
+                            with col2:
+                                st.write(f"**Hazard:** {incident['cause']}")
+                                st.write(f"**Victim:** {incident['victim']}")
+                            st.write(f"**Description:** {incident['description']}")
             
-            fig = px.bar(df_severity, x="Severity", y="Count",
-                        title="⚠️ Severity Distribution",
-                        color="Severity",
-                        color_discrete_map=colors)
-            st.plotly_chart(fig, use_container_width=True)
-    
-    # Second row
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Incident types
-        if stats["incident_types"]:
-            # Get top 7 incident types
-            incident_items = sorted(stats["incident_types"].items(), 
-                                   key=lambda x: x[1], reverse=True)[:7]
-            df_types = pd.DataFrame(incident_items, columns=["Type", "Count"])
+            elif result['type'] == 'keyword':
+                if result.get('analysis'):
+                    analysis = result['analysis']
+                    st.info(f"🔍 Found **{analysis['total_matches']}** matching incidents. Primary hazard: **{analysis['primary_hazard']}**, High concentration in: **{analysis['high_risk_state']}")
+                else:
+                    st.info(result['message'])
+                
+                if result['data']:
+                    st.markdown("### 📋 Matching Incidents")
+                    for incident in result['data'][:10]:
+                        with st.expander(f"📅 {incident['date']} - {incident['mine_name']} ({incident['cause']})"):
+                            st.write(f"**Location:** {incident['location']}")
+                            st.write(f"**Description:** {incident['description']}")
             
-            fig = px.pie(df_types, values="Count", names="Type",
-                        title="🔧 Incident Type Distribution",
-                        hole=0.3)
-            st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info(result['message'])
+                if result.get('data'):
+                    for item in result['data']:
+                        with st.expander(f"{item.get('date', 'Unknown')} - {item.get('mine_name', 'Unknown')}"):
+                            st.write(item.get('description', 'No description'))
     
-    with col2:
-        # Geographic distribution
-        if stats["states"]:
-            # Get top 6 states
-            state_items = sorted(stats["states"].items(), 
-                                key=lambda x: x[1], reverse=True)[:6]
-            df_states = pd.DataFrame(state_items, columns=["State", "Incidents"])
-            
-            fig = px.bar(df_states, x="Incidents", y="State",
-                        title="🗺️ Geographic Hotspots",
-                        orientation='h',
-                        color="Incidents",
-                        color_continuous_scale="Reds")
-            st.plotly_chart(fig, use_container_width=True)
-    
-    # Detailed data table
-    st.markdown("---")
-    st.subheader("📋 Detailed Incident Records")
-    
-    if filtered_data:
-        # Prepare table data
-        table_data = []
-        for meta in filtered_data[:50]:  # Limit to 50 rows
-            table_data.append({
-                "Source": meta.get("source", "N/A"),
-                "Year": meta.get("year", "N/A"),
-                "State": meta.get("state", "N/A"),
-                "Severity": meta.get("severity", "N/A"),
-                "Mine Type": meta.get("mine_type", "N/A"),
-                "Casualties": meta.get("casualties", 0),
-                "Incident Types": ", ".join(meta.get("incident_types", ["N/A"])[:2])
-            })
+    # --- Page 3: Generate Safety Audit ---
+    elif st.session_state.page == "📝 Generate Safety Audit":
+        st.subheader("📝 Automated Safety Audit Generation")
+        st.write("The Audit Agent analyzes the dataset to identify trends, root causes, and recommend preventive actions aligned with DGMS regulations.")
         
-        df_table = pd.DataFrame(table_data)
-        st.dataframe(df_table, use_container_width=True, height=400)
-        
-        # Download button
-        csv = df_table.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Data as CSV",
-            data=csv,
-            file_name="mining_incidents_filtered.csv",
-            mime="text/csv"
-        )
-    else:
-        st.info("No data available for the selected filters")
+        if st.button("🚀 Generate Comprehensive Safety Audit Report"):
+            with st.spinner("🤖 Audit Agent analyzing... Cross-referencing regulations... Generating report..."):
+                audit = orchestrator.run_audit()
+                time.sleep(2)  # Simulate processing
+            
+            # Display Audit Report
+            st.markdown("---")
+            st.markdown(f"## 📋 DGMS Automated Safety Audit Report")
+            st.markdown(f"**Report ID:** `{audit['report_id']}`")
+            st.markdown(f"**Generated:** `{datetime.fromisoformat(audit['generated_at']).strftime('%Y-%m-%d %H:%M:%S')}`")
+            st.markdown("---")
+            
+            # Executive Summary
+            st.markdown("### 1️⃣ Executive Summary")
+            summary = audit['executive_summary']
+            
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total Accidents", summary['total_accidents'])
+            col2.metric("Total Deaths", summary['total_deaths'])
+            col3.metric("Date Range", summary.get('date_range', 'N/A'))
+            
+            if summary.get('top_hazards'):
+                st.markdown("**🔴 Primary Hazards:**")
+                for hazard, count in list(summary['top_hazards'].items())[:3]:
+                    st.write(f"- {hazard}: `{count}` incidents")
+            
+            st.divider()
+            
+            # Hazard Analysis
+            st.markdown("### 2️⃣ Key Hazard Trends & Root Cause Analysis")
+            
+            if audit['hazard_analysis']:
+                for hazard in audit['hazard_analysis']:
+                    severity_color = "🔴" if hazard['severity'] == 'Critical' else "🟠" if hazard['severity'] == 'High' else "🟡"
+                    
+                    with st.expander(f"{severity_color} {hazard['hazard']} - {hazard['deaths']} deaths ({hazard['incidents']} incidents)"):
+                        st.markdown(f"**Severity:** `{hazard['severity']}`")
+                        st.markdown(f"**Regulation Violated:** `{hazard['regulation_violated']}`")
+                        st.markdown(f"**Root Cause:** {hazard['root_cause']}")
+            else:
+                st.info("No hazard analysis available")
+            
+            st.divider()
+            
+            # Compliance Check
+            st.markdown("### 3️⃣ Regulatory Compliance Assessment")
+            
+            if audit['compliance_check']:
+                compliance_df = pd.DataFrame(audit['compliance_check'])
+                
+                st.dataframe(
+                    compliance_df[['regulation', 'title', 'violation_count', 'hazard_type', 'status', 'priority']],
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info("No compliance issues detected")
+            
+            st.divider()
+            
+            # Recommendations
+            st.markdown("### 4️⃣ Agent-Recommended Preventive Actions")
+            
+            if audit['recommendations']:
+                for i, rec in enumerate(audit['recommendations'], 1):
+                    priority_icon = "🚨" if rec['priority'] == 'Critical' else "⚠️"
+                    st.markdown(f"**{i}. {priority_icon} {rec['action']}**")
+                    st.write(f"   - Compliance: `{rec['regulation']}`")
+                    st.write(f"   - Priority: `{rec['priority']}`")
+                    st.write("")
+            else:
+                st.info("No specific recommendations generated")
+            
+            st.markdown("---")
+            st.markdown("*End of Report - Generated by SARSA Audit Agent*")
+            
+            # Download button
+            report_text = f"""
+DGMS Automated Safety Audit Report
+Report ID: {audit['report_id']}
+Generated: {audit['generated_at']}
 
+=== EXECUTIVE SUMMARY ===
+Total Accidents: {summary['total_accidents']}
+Total Deaths: {summary['total_deaths']}
+Date Range: {summary.get('date_range', 'N/A')}
 
-def main():
-    """Main application"""
-    
-    # Initialize session state
-    if 'initialized' not in st.session_state:
-        try:
-            rag, agent = initialize_system()
-            st.session_state.rag = rag
-            st.session_state.agent = agent
-            st.session_state.initialized = True
-        except Exception as e:
-            st.error(f"Initialization error: {e}")
-            st.info("Please ensure OpenAI API key is set and documents are in data/dgms/")
-            return
-    
-    # Render sidebar
-    render_sidebar()
-    
-    # Main content tabs
-    tabs = st.tabs(["🏠 Home", "🔍 Query", "🤖 AI Agent", "📊 Dashboard"])
-    
-    with tabs[0]:
-        render_home_tab()
-    
-    with tabs[1]:
-        render_query_tab()
-    
-    with tabs[2]:
-        render_agent_tab()
-    
-    with tabs[3]:
-        render_dashboard_tab()
+=== HAZARD ANALYSIS ===
+{chr(10).join([f"- {h['hazard']}: {h['deaths']} deaths, Root Cause: {h['root_cause']}" for h in audit['hazard_analysis']])}
 
+=== RECOMMENDATIONS ===
+{chr(10).join([f"{i}. {rec['action']} (Priority: {rec['priority']})" for i, rec in enumerate(audit['recommendations'], 1)])}
+"""
+            
+            st.download_button(
+                label="📥 Download Report as TXT",
+                data=report_text,
+                file_name=f"SARSA_Audit_{audit['report_id']}.txt",
+                mime="text/plain"
+            )
 
-if __name__ == "__main__":
-    main()
+# Footer
+st.divider()
+st.markdown("""
+<div style='text-align: center; color: #666; font-size: 0.9rem;'>
+    <p><strong>SARSA</strong> - AI for Mine Safety Intelligence | Built with Pathway, LangGraph, and Streamlit</p>
+    <p>Indian Institute of Technology (ISM) Dhanbad</p>
+</div>
+""", unsafe_allow_html=True)

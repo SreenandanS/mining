@@ -1,70 +1,181 @@
-# AI for Proactive Mine Safety Intelligence
+# SARSA : AI for Mine Safety Intelligence
 
-## Overview
+### A Digital Mining Safety Officer powered by Agentic AI + Real-time RAG
 
-Mining accidents have historically been a significant concern in India. This project aims to address this challenge by developing an intelligent platform designed to provide precautions, deliver timely warnings, and suggest actionable safety measures to prevent incidents.
+**SARSA (Safety & Risk Smart Assistant)** is one of the fastest (Pathway framework) agent-powered mine-safety intelligence platform designed for real-time accident monitoring, analysis, and autonomous safety auditing.
 
-The core goal is to shift from reactive analysis to proactive prevention. The system will leverage Artificial Intelligence to analyze historical accident data and monitor real-time information streams—including official reports and local news—to identify emerging hazards before they result in an accident.
 
-## Project Aim
+---
 
-This project aims to use the potential of NLP to digitize and analyze extensive collections of Indian mining accident records. The platform will analyze data to detect patterns, and its advanced AI agents will autonomously monitor new information to provide warnings and recommend specific preventive measures.
+## 🚀 Features
 
-## Getting Started
+SARSA provides an end-to-end autonomous system for monitoring, querying, and auditing mine safety data.
 
-Follow these steps to set up the project locally.
+| Module | Function |
+| :--- | :--- |
+| **Analysis Agent** | Computes KPIs, heatmaps, timelines, and hazard trends. |
+| **Query Agent** | Provides natural-language Q&A for mine safety data. |
+| **Audit Agent** | Auto-generates DGMS-aligned safety audit reports. |
+| **Regulatory RAG** | Reasons over compliance with The Mines Act & MMR 1961. |
+| **Live FS/news Data Stream**| Watches `data/dgms/` folder and parses new PDFs/news jsonls live. |
+| **Embeddings / RAG** | Creates a semantic vector index of accidents and rules. |
+| **LangGraph Orchestration**| Manages the multi-agent flow (Analysis → Query → Audit). |
+| **Streamlit Frontend** | Powers the dashboards, chat interface, and audit console. |
+| **Live Alerts** | New accidents auto-appear with toast notifications. |
 
-### 1. Clone the Repository
+## 📂 System Pipeline
 
-```bash
-git clone [https://github.com/your-username/your-repository-name.git](https://github.com/your-username/your-repository-name.git)
-cd your-repository-name
-```
+The flow of data from raw PDF reports to actionable insights in the UI.
 
-### 2. make a new python environment
 
-```bash
-# Create a new environment named 'venv'
-python -m venv venv
-# Activate the environment
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
-```
+DGMS PDFs / Live Folder
+        ↓
+PyMuPDF + custom parser
+        ↓
+Structured accident dataset (date, mine, location, cause, victims, description)
+        ↓
+Sentence-Transformer embeddings + FAISS (Vector Index)
+        ↓
+LangGraph Agents:
+    • Analysis Agent
+    • Query Agent
+    • Audit Agent
+        ↓
+RAG over regulatory knowledge base (MMR 1961, Mines Act)
+        ↓
+Streamlit UI + Live Pathway Streaming + OpenAI conversational layer
+1️⃣ Analysis Agent
 
-### 3. install dependecies
+Fatality trends
 
-```bash
+Hazard category stats
+
+State-wise patterns
+
+Heatmaps + timelines
+
+2️⃣ Query Agent
+
+Free-form natural-language queries:
+
+“Show dumper-related incidents in Jharkhand mines in monsoon months.”
+“Summarize ladder-fall hazards in UG coal mines.”
+
+3️⃣ Audit Agent
+
+Maps incidents to The Mines Act & MMR rules
+
+Flags probable violations
+
+Generates preventive recommendations
+
+📘 Regulatory Knowledge Base
+
+Examples:
+
+Incident	Rule Check
+Fall from height	MMR 118(4) — safety belt requirement
+Gas explosion	MMR 124 — ventilation/gas monitoring
+## ⚡ Real-time Pipeline
+🗂️ Live PDF/ews streaming Kafka/Drop-Folder (Local FS)
+
+Drop DGMS reports into:
+
+data/dgms/
+
+## 📡 Pathway FS Streamer (continuous ingestion)
+
+Runs separately:
+python pathway_ingestor_fs.py
+Watches folder → parses PDF → writes cleaned rows → out/jsonl/
+
+## 📊 Streamlit UI auto-updates
+
+New incidents appear in Live Events panel
+FAISS index refreshes only on new rows
+Toast alerts for new events
+
+## 🏗️ Tech Stack
+Layer	Technology
+Agents & Orchestration:	LangGraph
+LLM: OpenAI GPT-5 / GPT-4o-mini
+NLP/RAG:	Sentence Transformers + FAISS
+Streaming:	Pathway filesystem streaming
+Frontend:	Streamlit
+PDF parsing:	PyMuPDF + **custom rule-based extraction**
+Data:	DGMS historical accident reports
+Reg Compliance	MMR 1961 + The Mines Act 1952
+📦 Installation
+git clone <repo>
+cd sarsa
 pip install -r requirements.txt
-```
-### 4. Run the app
 
-```bash
-python -m streamlit run app.py
-```
+Environment Variables
 
-## Key Features
+Create .env
 
-### 1. Core Data Analysis
+OPENAI_API_KEY="sk-xxxx"
 
-* **Pattern Detection:** The system will use AI techniques to allow users to quickly access insights and detect patterns in accident data.
-* **Interactive Dashboard:** Users can view real-time accident trends, locations, and timelines through a simple, interactive interface.
-* **Hazard Identification:** The platform is designed to outperform traditional methods in identifying hazards and investigating root causes.
-* **Automated Reporting:** It will generate automated safety audit reports, which reduces human labor and increases accuracy.
+▶️ Run System
+1️⃣ Start FS Streaming (live ingestion)
+python pathway_ingestor_fs.py
 
-### 2. Proactive "Agentic AI" Capabilities
 
-This project moves beyond simple analysis by incorporating autonomous agents that act on data:
+This watches data/dgms/ and pipes parsed accidents to out/jsonl/
 
-* **Autonomous Safety Monitoring Agents**
-   * **Proactive Alerts:** The system will automatically classify incidents, flag potential hazards, and generate alerts (e.g., “Increase in transportation machinery accidents in Jharkhand mines in Q3 2022”).
-    * **Incident Analysis & Compliance:** When a new accident is detected (e.g., from news data), the AI will analyze the event to determine which **code of conduct or rule was not followed** and suggest specific **steps to prevent it**.
-    * **Preventive Recommendations:** Based on the data, agents will recommend targeted inspections or specific preventive measures to mine operators.
-* **Interactive “Digital Mine Safety Officer”**
-    * **Conversational AI:** A conversational layer built on the NLP platform will allow users to ask domain-specific questions (e.g., “Show me all methane-related accidents in 2021 in underground coal mines”).
-    * **Compliance Suggestions:** The agent can suggest regulatory compliance actions (e.g., “Mine X exceeds threshold for ground movement incidents; schedule slope stability inspection”).
+2️⃣ Start UI
+streamlit run app.py
 
-## Data Source
+🖥️ App Screens
+📊 Executive Dashboard
 
-The data for this analysis originates from the Directorate General of Mines Safety (DGMS), India. The study utilizes more than 300 incident records from the years 2016 to 2022.
+KPIs (fatalities, accidents, hazard types)
+Heatmap
+Accident timeline
+Live Events feed
+
+💬 Interactive Query
+Conversational answers
+Token streaming UX
+Structured JSON view for transparency
+
+📝 Safety Audit Generator
+
+Auto-audit based on accident logs
+Regulatory rule justification
+Safety recommendations
+
+🎯 Capabilities Demonstrated in PPT
+Concept	Implemented
+Agentic AI (3 agents)	✅
+RAG + KG like compliance memory	✅
+Real-time ingestion	✅ (local folder)
+Predictive trends:	Partial 
+Regulatory rule mapping	✅ MMR/Mines Act layer
+Live dashboard	✅
+
+## 🔮 Future Scope
+
+Real IoT sensor ingestion (vibration, gas monitors)
+Hindi/Multilingual mining safety chatbot
+DGMS cloud deployment
+Safety video analytics integration
+Risk score per mine (seasonality / geo-risk)
+
+## 🧪 Example Test Flow
+
+Place DGMS PDFs/news stream into ./data/dgms/
+Start streamer → UI picks records live
+Ask queries like:
+“Accidents involving HEMM in Chhattisgarh last 2 years”
+Generate safety audit PDF
+Live-refresh to see auto-alerts
+
+## 👥 Team
+
+IIT(ISM) Dhanbad
+Sreenandan Shashidharan, Anukul Tiwari, Raj Priyadarshi, Suryansh Kulshreshth, Ayushman Dutta
+
+## 🛡️ Safety Commitment
+
+SARSA aims to save lives in mines through intelligence, insight, and autonomy — reducing accidents and strengthening compliance.

@@ -3,6 +3,7 @@
 ### A Digital Mining Safety Officer powered by Agentic AI + Real-time RAG
 
 **SARSA (Safety & Risk Smart Assistant)** is one of the fastest (Pathway framework) agent-powered mine-safety intelligence platform designed for real-time accident monitoring, analysis, and autonomous safety auditing.
+<img width="474" height="246" alt="image" src="https://github.com/user-attachments/assets/fdfb343e-9c3e-472b-92b5-2765d1e9ece5" />
 
 
 ---

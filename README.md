@@ -175,7 +175,7 @@ Live-refresh to see auto-alerts
 ## 👥 Team
 
 IIT(ISM) Dhanbad
-Sreenandan Shashidharan, Anukul Tiwari, Raj Priyadarshi, Suryansh Kulshreshth, Ayushman Dutta
+Anukul Tiwari, Raj Priyadarshi, Suryansh Kulshreshth, Ayushman Dutta, Sreenandan Shashidharan
 
 ## 🛡️ Safety Commitment
 
